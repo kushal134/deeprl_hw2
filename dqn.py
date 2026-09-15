@@ -19,18 +19,24 @@ class ReplayMemory:
         # define init params
         # use collections.deque
         # BEGIN STUDENT SOLUTION
+        self.memory_size = memory_size
+        self.batch_size = batch_size
+        self.queue = collections.deque(max_len=self.memory_size)
         # END STUDENT SOLUTION
         pass
 
     def sample_batch(self):
         # randomly chooses from the collections.deque
         # BEGIN STUDENT SOLUTION
+        batch = random.sample(self.queue, self.batch_size)
+        return batch
         # END STUDENT SOLUTION
         pass
 
     def append(self, transition):
         # append to the collections.deque
         # BEGIN STUDENT SOLUTION
+        self.queue.append(transition)
         # END STUDENT SOLUTION
         pass
 
@@ -73,27 +79,107 @@ class DeepQNetwork(nn.Module):
             nn.Linear(state_size, hidden_layer_size),
             nn.ReLU(),
             # BEGIN STUDENT SOLUTION
+            nn.Linear(hidden_layer_size, action_size),
             # END STUDENT SOLUTION
         )
 
         # initialize replay buffer, networks, optimizer, move networks to device
         # BEGIN STUDENT SOLUTION
+        self.replay_buffer = ReplayMemory(
+            replay_buffer_size, replay_buffer_batch_size
+        )
+        self.q_policy = q_net_init().to(device)
+        self.q_target = q_net_init().to(device)
+
+        self.q_policy_network_optimizer = optim.Adam(self.q_policy.parameters(), lr=lr_q_net)
+
+        # Target network merely copies the policy and should start from the same random state
+        # Also set to eval to not store any gradients in it
+        self.q_target.load_state_dict(self.q_policy.state_dict()).eval()
         # END STUDENT SOLUTION
 
-    def forward(self, state, new_state):
+    def forward(self, state, action, reward, new_state):
         # Given a minibatch of transitions, return:
         #   q_values: Q(s_j, a_j) under the online network, shape (batch,)
         #   targets:  the TD target y_j, shape (batch,)
         # Use the correct network for the target based on self.double_dqn.
         # BEGIN STUDENT SOLUTION
+        # state is (batch, state_dim)
+        # q_values is (batch, action_dim)
+        q_values = self.q_policy(state)
+        q_target_values = self.q_target(next_state)
+        target = reward
+        if !terminal:
+            target += self.gamma*(q_target_values.argmax(dim=-1).item())
+
+        self.q_target(new_state).max(dim = 1).values
+        targets = 
+        return q_values[action],
         # END STUDENT SOLUTION
-        pass
 
     def get_action(self, state, stochastic):
         # if stochastic, sample using epsilon greedy, else get the argmax
-        # BEGIN STUDENT SOLUTION
+        # BEGIN STUDENT SOLUTION       
+        action_vals = self.q_policy(state)
+
+        # dist = torch.distributions.Categorical(probs=actio)
+
+        if stochastic:
+            if random.random() < self.epsilon:
+                action = random.randrange(self.num_actions)
+            else:
+                action = action_vals.argmax(dim=-1).item()
+        else:
+            action = action_vals.argmax(dim=-1).item()
+
+        return action
         # END STUDENT SOLUTION
-        pass
+
+    def train_step(self):
+        # Do not start training until burn in 
+        if len(self.replay_buffer) >= self.burn_in:
+            self.optimizer.zero_grad()
+
+            states, actions, rewards, next_states, dones = self.replay_buffer.sample_batch()
+
+            q_polict_outputs , q_target_values = \
+                self.forward(states, actions, rewards, next_states, dones)
+             
+            loss = nn.functional.mse_loss(q_polict_outputs, q_target_values)
+            loss.backward()
+            self.
+            
+        
+     
+
+    def run(self, env, max_steps, num_episodes, train):
+        # Creating this function like the last assignment for simplicity
+        total_rewards = []
+ 
+        for _ in range(num_episodes):
+            state, _ = env.reset()
+            total_reward = 0.0
+ 
+            for _ in range(max_steps):
+                action = self.get_action(state, stochastic=train)
+                next_state, reward, terminated, truncated, _ = env.step(action)
+                done = terminated or truncated
+ 
+                if train:
+                    self.replay_buffer.append(
+                        [state, action, reward, next_state, done] # SARST, like SARSA getit? :D
+                    )
+                    self.train_step()
+ 
+                total_reward += reward
+                state = next_state
+ 
+                if done:
+                    break
+ 
+            total_rewards.append(total_reward)
+ 
+        return total_rewards # or don't, we don't use it in this assignment
 
 
 def graph_agents(
@@ -160,6 +246,49 @@ def main():
 
     # init args, agents, and call graph_agent on the initialized agents
     # BEGIN STUDENT SOLUTION
+    env = gym.make(args.env_name)
+    state_size = env.observation_space.shape[0]
+    action_size = env.action_space.n
+
+
+    device = "cpu" # Small MLP so lets try CPU first
+    print(f"Using device {device}")
+
+    agents = [
+        DeepQNetwork(
+            state_size,
+            action_size,
+            double_dqn=args.double_dqn,
+            device=device,
+        )
+        for _ in range(args.num_runs)
+    ]
+
+    num_checkpoints = args.num_episodes // args.test_frequency
+    mean_undiscounted_returns = np.zeros((args.num_runs, num_checkpoints))
+
+    for run_idx, agent in enumerate(agents):
+        print(f"Run {run_idx + 1}/{args.num_runs}")
+ 
+        for checkpoint_idx in range(num_checkpoints):
+            agent.run(env, args.max_steps, args.test_frequency, train=True)
+            test_rewards = agent.run(env, args.max_steps, 20, train=False)
+
+            mean_reward = float(np.mean(test_rewards))
+            mean_undiscounted_returns[run_idx, checkpoint_idx] = mean_reward
+ 
+            print(
+                f"Episode {(checkpoint_idx + 1) * args.test_frequency}: {mean_reward:.2f}"
+            )
+
+    graph_name = "DoubleDQN" if args.double_dqn else "DQN"
+    graph_agents(
+        graph_name,
+        mean_undiscounted_returns,
+        args.test_frequency,
+        args.max_steps,
+        args.num_episodes,
+    )
     # END STUDENT SOLUTION
 
 
