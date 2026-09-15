@@ -50,7 +50,7 @@ class DeepQNetwork(nn.Module):
         lr_q_net=2e-4,
         gamma=0.99,
         epsilon=0.05,
-        target_update=50,
+        target_update=50, 
         burn_in=10000,
         replay_buffer_size=50000,
         replay_buffer_batch_size=32,
@@ -98,23 +98,22 @@ class DeepQNetwork(nn.Module):
         self.q_target.load_state_dict(self.q_policy.state_dict()).eval()
         # END STUDENT SOLUTION
 
-    def forward(self, state, action, reward, new_state):
+    def forward(self, state, action, reward, new_state, dones):
         # Given a minibatch of transitions, return:
         #   q_values: Q(s_j, a_j) under the online network, shape (batch,)
         #   targets:  the TD target y_j, shape (batch,)
         # Use the correct network for the target based on self.double_dqn.
         # BEGIN STUDENT SOLUTION
         # state is (batch, state_dim)
-        # q_values is (batch, action_dim)
-        q_values = self.q_policy(state)
-        q_target_values = self.q_target(next_state)
-        target = reward
-        if !terminal:
-            target += self.gamma*(q_target_values.argmax(dim=-1).item())
+        #self.q_policy(state) is (batch, action_dim)
+        # q_values is (batch)
 
-        self.q_target(new_state).max(dim = 1).values
-        targets = 
-        return q_values[action],
+        q_values = self.q_policy(state).gather(
+            dim=1, index=action.long().unsqueeze(1)).squeeze(1)
+    
+        q_target_values = self.q_target(new_state)
+        targets = reward + (~dones).float() * self.gamma * q_target_values.max(dim=-1).values
+        return q_values, targets
         # END STUDENT SOLUTION
 
     def get_action(self, state, stochastic):
@@ -133,34 +132,29 @@ class DeepQNetwork(nn.Module):
             action = action_vals.argmax(dim=-1).item()
 
         return action
-        # END STUDENT SOLUTION
-
-    def train_step(self):
-        # Do not start training until burn in 
-        if len(self.replay_buffer) >= self.burn_in:
-            self.optimizer.zero_grad()
-
-            states, actions, rewards, next_states, dones = self.replay_buffer.sample_batch()
-
-            q_polict_outputs , q_target_values = \
-                self.forward(states, actions, rewards, next_states, dones)
-             
-            loss = nn.functional.mse_loss(q_polict_outputs, q_target_values)
-            loss.backward()
-            self.
-            
-        
-     
+        # END STUDENT SOLUTION     
 
     def run(self, env, max_steps, num_episodes, train):
         # Creating this function like the last assignment for simplicity
         total_rewards = []
- 
-        for _ in range(num_episodes):
+
+        # prefilling the buffer
+        state, _ = env.reset()
+        for _ in range(self.burn_in):
+            action = self.get_action(state, stochastic=train)
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            self.replay_buffer.append([state, action, reward, next_state, done])
+            state = next_state
+            if terminated or truncated:
+                state, _ = env.reset()
+        
+
+        for e in range(num_episodes):
             state, _ = env.reset()
             total_reward = 0.0
- 
-            for _ in range(max_steps):
+
+
+            for t in range(max_steps):
                 action = self.get_action(state, stochastic=train)
                 next_state, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
@@ -169,10 +163,23 @@ class DeepQNetwork(nn.Module):
                     self.replay_buffer.append(
                         [state, action, reward, next_state, done] # SARST, like SARSA getit? :D
                     )
-                    self.train_step()
+                    # if len(self.replay_buffer) >= self.burn_in:
+                    self.q_policy_network_optimizer.zero_grad()
+
+                    states, actions, rewards, next_states, dones = self.replay_buffer.sample_batch()
+
+                    q_policy_outputs , q_target_values = \
+                        self.forward(states, actions, rewards, next_states, dones)
+                    
+                    loss = nn.functional.mse_loss(q_policy_outputs, q_target_values)
+                    loss.backward()
+                    self.q_policy_network_optimizer.step()
  
                 total_reward += reward
                 state = next_state
+
+                if t % self.target_update == 0:
+                    self.q_target= self.q_policy
  
                 if done:
                     break
