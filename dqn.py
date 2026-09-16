@@ -21,7 +21,7 @@ class ReplayMemory:
         # BEGIN STUDENT SOLUTION
         self.memory_size = memory_size
         self.batch_size = batch_size
-        self.queue = collections.deque(max_len=self.memory_size)
+        self.queue = collections.deque(maxlen=self.memory_size)
         # END STUDENT SOLUTION
         pass
 
@@ -105,31 +105,41 @@ class DeepQNetwork(nn.Module):
         # Use the correct network for the target based on self.double_dqn.
         # BEGIN STUDENT SOLUTION
         # state is (batch, state_dim)
-        #self.q_policy(state) is (batch, action_dim)
-        # q_values is (batch)
+        # self.q_policy(state) is (batch, action_dim)
+        # q_values is (batch,)
 
         q_values = self.q_policy(state).gather(
-            dim=1, index=action.long().unsqueeze(1)).squeeze(1)
-    
-        q_target_values = self.q_target(new_state)
-        targets = reward + (~dones).float() * self.gamma * q_target_values.max(dim=-1).values
+            dim=1, index=action.unsqueeze(1)).squeeze(1)
+
+        ## we do not want the target gradients
+        with torch.no_grad():
+            if self.double_dqn:
+                next_action = self.q_policy(new_state).argmax(dim = 1)
+                next_q_target_values = self.q_target(new_state).gather(
+                    dim=1, index=next_action.unsqueeze(1)).squeeze(1)
+
+            else:
+                next_q_target_values = self.q_target(new_state).max(dim = 1).values
+            targets = reward + (~dones).float() * self.gamma * next_q_target_values
         return q_values, targets
         # END STUDENT SOLUTION
 
     def get_action(self, state, stochastic):
         # if stochastic, sample using epsilon greedy, else get the argmax
         # BEGIN STUDENT SOLUTION       
-        action_vals = self.q_policy(state)
+        state = torch.as_tensor(state, dtype = torch.float32, device=self.device).unsqueeze(0)
+        ## get action_vals from the current online poicy
+        with torch.no_grad():
+            action_vals = self.q_policy(state)
 
-        # dist = torch.distributions.Categorical(probs=actio)
 
         if stochastic:
             if random.random() < self.epsilon:
-                action = random.randrange(self.num_actions)
+                action = random.randrange(self.action_size)
             else:
-                action = action_vals.argmax(dim=-1).item()
+                action = action_vals.argmax(dim=1).item()
         else:
-            action = action_vals.argmax(dim=-1).item()
+            action = action_vals.argmax(dim=1).item()
 
         return action
         # END STUDENT SOLUTION     
@@ -140,16 +150,17 @@ class DeepQNetwork(nn.Module):
 
         # prefilling the buffer
         state, _ = env.reset()
-        for _ in range(self.burn_in):
+        while train and len(self.replay_buffer.queue) < self.burn_in:
             action = self.get_action(state, stochastic=train)
             next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
             self.replay_buffer.append([state, action, reward, next_state, done])
             state = next_state
             if terminated or truncated:
                 state, _ = env.reset()
         
 
-        for e in range(num_episodes):
+        for _ in range(num_episodes):
             state, _ = env.reset()
             total_reward = 0.0
 
@@ -166,7 +177,12 @@ class DeepQNetwork(nn.Module):
                     # if len(self.replay_buffer) >= self.burn_in:
                     self.q_policy_network_optimizer.zero_grad()
 
-                    states, actions, rewards, next_states, dones = self.replay_buffer.sample_batch()
+                    states, actions, rewards, next_states, dones = zip(*self.replay_buffer.sample_batch())
+                    states = torch.as_tensor(np.array(states), dtype=torch.float32, device=self.device)
+                    actions = torch.as_tensor(actions, dtype=torch.long, device=self.device)
+                    rewards = torch.as_tensor(rewards, dtype=torch.float32, device=self.device)
+                    next_states = torch.as_tensor(np.array(next_states), dtype=torch.float32, device=self.device)
+                    dones = torch.as_tensor(dones, dtype=torch.bool, device=self.device)
 
                     q_policy_outputs , q_target_values = \
                         self.forward(states, actions, rewards, next_states, dones)
@@ -178,8 +194,9 @@ class DeepQNetwork(nn.Module):
                 total_reward += reward
                 state = next_state
 
-                if t % self.target_update == 0:
-                    self.q_target= self.q_policy
+                ## update the target network every target_update_steps
+                if (t+1) % self.target_update == 0:
+                    self.q_target.load_state_dict(self.q_policy.state_dict())
  
                 if done:
                     break
