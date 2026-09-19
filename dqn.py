@@ -54,7 +54,7 @@ class DeepQNetwork(nn.Module):
         burn_in=10000,
         replay_buffer_size=50000,
         replay_buffer_batch_size=32,
-        device="cuda" if torch.cuda.is_available() else "cpu",
+        device="cpu",
     ):
         super(DeepQNetwork, self).__init__()
 
@@ -71,6 +71,7 @@ class DeepQNetwork(nn.Module):
         self.burn_in = burn_in
 
         self.device = device
+        self.num_updates = 0
 
         hidden_layer_size = 256
 
@@ -95,7 +96,9 @@ class DeepQNetwork(nn.Module):
 
         # Target network merely copies the policy and should start from the same random state
         # Also set to eval to not store any gradients in it
-        self.q_target.load_state_dict(self.q_policy.state_dict()).eval()
+        self.q_target.load_state_dict(self.q_policy.state_dict())
+        self.q_target.eval()
+        self.q_target.requires_grad_(False)
         # END STUDENT SOLUTION
 
     def forward(self, state, action, reward, new_state, dones):
@@ -189,13 +192,13 @@ class DeepQNetwork(nn.Module):
                     loss = nn.functional.mse_loss(q_policy_outputs, q_target_values)
                     loss.backward()
                     self.q_policy_network_optimizer.step()
+
+                    self.num_updates+=1
+                    if self.num_updates % self.target_update == 0:
+                        self.q_target.load_state_dict(self.q_policy.state_dict())
  
                 total_reward += reward
                 state = next_state
-
-                ## update the target network every target_update_steps
-                if (t+1) % self.target_update == 0:
-                    self.q_target.load_state_dict(self.q_policy.state_dict())
  
                 if done:
                     break
@@ -272,14 +275,7 @@ def main():
     env = gym.make(args.env_name)
     state_size = env.observation_space.shape[0]
     action_size = env.action_space.n
-
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device {device}")
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
-        print(f"CUDA version: {torch.version.cuda}")
-
+    device = "cpu"
     agents = [
         DeepQNetwork(
             state_size,
