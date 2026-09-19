@@ -102,29 +102,7 @@ class DeepQNetwork(nn.Module):
         # END STUDENT SOLUTION
 
     def forward(self, state, new_state = None):
-        # Given a minibatch of transitions, return:
-        #   q_values: Q(s_j, a_j) under the online network, shape (batch,)
-        #   targets:  the TD target y_j, shape (batch,)
-        # Use the correct network for the target based on self.double_dqn.
-        # BEGIN STUDENT SOLUTION
-        # state is (batch, state_dim)
-        # self.q_net(state) is (batch, action_dim)
-        # q_values is (batch,)
-
-        # q_values = self.q_net(state).gather(
-        #     dim=1, index=action.unsqueeze(1)).squeeze(1)
-
-        # ## we do not want the target gradients
-        # with torch.no_grad():
-        #     if self.double_dqn:
-        #         next_action = self.q_net(new_state).argmax(dim = 1)
-        #         next_q_target_values = self.q_target(new_state).gather(
-        #             dim=1, index=next_action.unsqueeze(1)).squeeze(1)
-
-        #     else:
-        #         next_q_target_values = self.q_target(new_state).max(dim = 1).values
-        #     targets = reward + (~dones).float() * self.gamma * next_q_target_values
-        # return q_values, targets
+        # forward just returns the vector of Q values from the policy network
 
         return self.q_net(state)
         # END STUDENT SOLUTION
@@ -188,14 +166,14 @@ class DeepQNetwork(nn.Module):
                     next_states = torch.as_tensor(np.array(next_states), dtype=torch.float32, device=self.device)
                     dones = torch.as_tensor(dones, dtype=torch.bool, device=self.device)
 
-                    # q_net_outputs , q_target_values = \
-                    #     self.forward(states, actions, rewards, next_states, dones)
-                    
-                    # loss = nn.functional.mse_loss(q_net_outputs, q_target_values)
-
                     q_all = self.forward(states)
                     batch_indices = torch.arange(q_all.shape[0], device = self.device)
+                    ## obtain the q_values for the corresponding actions 
                     q_values = q_all[batch_indices, actions]
+
+                    ## compute the next_q_target_values
+                    ## if double_dqn use the best action from the policy netowrk
+                    ## else evaluate just using the net network
 
                     with torch.no_grad():
                         if self.double_dqn:
@@ -207,7 +185,7 @@ class DeepQNetwork(nn.Module):
                             next_q_target_values = self.q_target(next_states).max(dim = 1).values
                         targets = rewards + (~dones).float() * self.gamma * next_q_target_values
 
-
+                    ## loss between the tru q_values and the targets we computed above
                     loss = nn.functional.mse_loss(q_values, targets)
                     loss.backward()
                     self.q_net_network_optimizer.step()
