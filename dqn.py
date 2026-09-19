@@ -89,14 +89,14 @@ class DeepQNetwork(nn.Module):
         self.replay_buffer = ReplayMemory(
             replay_buffer_size, replay_buffer_batch_size
         )
-        self.q_policy = q_net_init().to(device)
+        self.q_net = q_net_init().to(device)
         self.q_target = q_net_init().to(device)
 
-        self.q_policy_network_optimizer = optim.Adam(self.q_policy.parameters(), lr=lr_q_net)
+        self.q_net_network_optimizer = optim.Adam(self.q_net.parameters(), lr=lr_q_net)
 
         # Target network merely copies the policy and should start from the same random state
         # Also set to eval to not store any gradients in it
-        self.q_target.load_state_dict(self.q_policy.state_dict())
+        self.q_target.load_state_dict(self.q_net.state_dict())
         self.q_target.eval()
         self.q_target.requires_grad_(False)
         # END STUDENT SOLUTION
@@ -108,16 +108,16 @@ class DeepQNetwork(nn.Module):
         # Use the correct network for the target based on self.double_dqn.
         # BEGIN STUDENT SOLUTION
         # state is (batch, state_dim)
-        # self.q_policy(state) is (batch, action_dim)
+        # self.q_net(state) is (batch, action_dim)
         # q_values is (batch,)
 
-        q_values = self.q_policy(state).gather(
+        q_values = self.q_net(state).gather(
             dim=1, index=action.unsqueeze(1)).squeeze(1)
 
         ## we do not want the target gradients
         with torch.no_grad():
             if self.double_dqn:
-                next_action = self.q_policy(new_state).argmax(dim = 1)
+                next_action = self.q_net(new_state).argmax(dim = 1)
                 next_q_target_values = self.q_target(new_state).gather(
                     dim=1, index=next_action.unsqueeze(1)).squeeze(1)
 
@@ -133,7 +133,7 @@ class DeepQNetwork(nn.Module):
         state = torch.as_tensor(state, dtype = torch.float32, device=self.device).unsqueeze(0)
         ## get action_vals from the current online poicy
         with torch.no_grad():
-            action_vals = self.q_policy(state)
+            action_vals = self.q_net(state)
 
 
         if stochastic:
@@ -177,7 +177,7 @@ class DeepQNetwork(nn.Module):
                         [state, action, reward, next_state, done] # SARST, like SARSA getit? :D
                     )
                     # if len(self.replay_buffer) >= self.burn_in:
-                    self.q_policy_network_optimizer.zero_grad()
+                    self.q_net_network_optimizer.zero_grad()
 
                     states, actions, rewards, next_states, dones = zip(*self.replay_buffer.sample_batch())
                     states = torch.as_tensor(np.array(states), dtype=torch.float32, device=self.device)
@@ -186,16 +186,16 @@ class DeepQNetwork(nn.Module):
                     next_states = torch.as_tensor(np.array(next_states), dtype=torch.float32, device=self.device)
                     dones = torch.as_tensor(dones, dtype=torch.bool, device=self.device)
 
-                    q_policy_outputs , q_target_values = \
+                    q_net_outputs , q_target_values = \
                         self.forward(states, actions, rewards, next_states, dones)
                     
-                    loss = nn.functional.mse_loss(q_policy_outputs, q_target_values)
+                    loss = nn.functional.mse_loss(q_net_outputs, q_target_values)
                     loss.backward()
-                    self.q_policy_network_optimizer.step()
+                    self.q_net_network_optimizer.step()
 
                     self.num_updates+=1
                     if self.num_updates % self.target_update == 0:
-                        self.q_target.load_state_dict(self.q_policy.state_dict())
+                        self.q_target.load_state_dict(self.q_net.state_dict())
  
                 total_reward += reward
                 state = next_state
