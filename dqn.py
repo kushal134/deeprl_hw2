@@ -28,7 +28,7 @@ class ReplayMemory:
     def sample_batch(self):
         # randomly chooses from the collections.deque
         # BEGIN STUDENT SOLUTION
-        batch = random.sample(self.queue, self.batch_size)
+        batch = random.choices(self.queue, k=self.batch_size)
         return batch
         # END STUDENT SOLUTION
         pass
@@ -54,7 +54,7 @@ class DeepQNetwork(nn.Module):
         burn_in=10000,
         replay_buffer_size=50000,
         replay_buffer_batch_size=32,
-        device="cpu",
+        device="cuda" if torch.cuda.is_available() else "cpu",
     ):
         super(DeepQNetwork, self).__init__()
 
@@ -151,7 +151,7 @@ class DeepQNetwork(nn.Module):
         # prefilling the buffer
         state, _ = env.reset()
         while train and len(self.replay_buffer.queue) < self.burn_in:
-            action = self.get_action(state, stochastic=train)
+            action = random.randrange(self.action_size)
             next_state, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             self.replay_buffer.append([state, action, reward, next_state, done])
@@ -159,7 +159,6 @@ class DeepQNetwork(nn.Module):
             if terminated or truncated:
                 state, _ = env.reset()
         
-
         for _ in range(num_episodes):
             state, _ = env.reset()
             total_reward = 0.0
@@ -275,8 +274,11 @@ def main():
     action_size = env.action_space.n
 
 
-    device = "cpu" # Small MLP so lets try CPU first
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device {device}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"CUDA version: {torch.version.cuda}")
 
     agents = [
         DeepQNetwork(
