@@ -234,8 +234,15 @@ def graph_agents(
     ax.set_ylabel("Average Total Reward")
     fig.savefig(f"./graphs/{graph_name}.png")
     plt.close(fig)
-    print(f"Finished: {graph_name}")
 
+    # Save summary statistics to file for autograder
+    with open(f"./graphs/{graph_name}_stats.txt", "w") as f:
+        f.write(f"final_mean: {average_total_rewards[-1]:.2f}\n")
+        f.write(f"final_max: {max_total_rewards[-1]:.2f}\n")
+        f.write(f"final_min: {min_total_rewards[-1]:.2f}\n")
+        f.write(f"best_mean: {max(average_total_rewards):.2f}\n")
+
+    print(f"Finished: {graph_name}")
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train an agent.")
