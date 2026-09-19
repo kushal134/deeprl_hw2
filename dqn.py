@@ -263,6 +263,12 @@ def parse_args():
         default=100,
         help="Number of training episodes between test episodes",
     )
+    parser.add_argument(
+        "--num_test_episodes",
+        type=int,
+        default=20,
+        help="Number of test episodes per checkpoint",
+    )
     parser.add_argument("--double_dqn", action="store_true", help="Use Double DQN")
     return parser.parse_args()
 
@@ -294,7 +300,7 @@ def main():
  
         for checkpoint_idx in range(num_checkpoints):
             agent.run(env, args.max_steps, args.test_frequency, train=True)
-            test_rewards = agent.run(env, args.max_steps, 20, train=False)
+            test_rewards = agent.run(env, args.max_steps, args.num_test_episodes, train=False)
 
             mean_reward = float(np.mean(test_rewards))
             mean_undiscounted_returns[run_idx, checkpoint_idx] = mean_reward
