@@ -157,12 +157,20 @@ Andrew ID 3: \begin{tcolorbox}[fit,height=1cm, width=5cm, blank, borderline={1pt
 
 \subsection*{2.2 DQN vs. Policy Gradient Algorithms (5 pts)}
 \begin{solution}[height=8cm]
-% YOUR SOLUTION
+DDQN reaches 200 in roughly 400 episodes, but REINFORCE with baseline and A2C with $N=100$ also saturate at 200 in HW1 and that too fairly fast ($\sim500$ episodes). DDQN \emph{only outperforms} plain REINFORCE and A2C with $N=1$ and $N=10$.
+
+\emph{Sample efficiency.} Off-policy replay gives one minibatch update per environment step ($\sim200$ per episode) while PG takes one update per episode and discards the data. Caveat-this is per episode, not per gradient step, and DDQN also has a 10K burn-in.
+
+\emph{Lower variance.} PG weights $\nabla_\theta\log\pi_\theta(a|s)$ by the whole-trajectory return $G_t$ from one correlated episode while TD targets use one transition plus a frozen target bootstrap with i.i.d. minibatches. So the wide bands across the 5 trials for REINFORCE and small-$N$ A2C against the narrow band here.
+
+\small Also, with $|\mathcal{A}|=2$ and a deterministic best possible action, only the ordering of two $Q$-values matters, while an actor must separate its logits over many updates. Rewards are $+1$ everywhere, so all $Q>0$ and $\max_a Q$ overestimates, since the same network picks the action and reports its value. DDQN picks with the online net and evaluates with the target net, so the inflated action is no longer the one chosen, i.e, less bias therefore fewer flipped argmaxes.
 \end{solution}
 
 \subsection*{2.3 Pros and Cons of Policy gradient methods (6 pts)}
 \begin{solution}[height=8cm]
-% YOUR SOLUTION
+\emph{A2C over DQN.} \textbf{(1)} Continuous or combinatorially large action spaces since DQN uses $\arg\max_a Q(s,a)$ at every step, which is intractable for $\mathcal{A}\subseteq\R^d$. \textbf{(2)} In some settings, we need a stochastic policy (e.g.m adverserial robustness) but a DQN policy is deterministic by construction ($\epsilon$-greedy is noise and not a stochastic representation). \textbf{3} DQN can have divergent behavior since frequency of target policy update is hand-crafted and you can have drift over replay buffer and current policy, while PG is just gradient descent and guarantees local optimum. \textbf{(4)} Cannot model action constraints in DQN.
+
+\emph{DQN over A2C.} \textbf{(1)} DQN is better for small discrete $\mathcal{A}$ with expensive env. interaction since you store transitions in a replay buffer and can train over them again-and-again (\textbf{(2)} another interpretation: DQN is off-policy and therefore more sample efficient). \textbf{(3)} You can have high bias in DQN but not very high variance which is an issue as you grow your horizon in A2C, so DQN is better for long-horizon. \textbf{(4} learning the ordering of $Q$ is a weaker requirement than learning a policy distribution since you have denser rewards, and don't need to factor in stochasticity.
 \end{solution}
 
 \clearpage
